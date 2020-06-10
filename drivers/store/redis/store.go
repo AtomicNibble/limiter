@@ -75,6 +75,8 @@ func (store *Store) Get(ctx context.Context, key string, rate limiter.Rate) (lim
 			return err
 		}
 
+		fmt.Printf("Limiter::Get Created: %v\n", created)
+
 		if created {
 			expiration := now.Add(rate.Period)
 			lctx = common.GetContextFromState(now, rate, expiration, 1)
@@ -86,9 +88,14 @@ func (store *Store) Get(ctx context.Context, key string, rate limiter.Rate) (lim
 			return err
 		}
 
-		expiration := now.Add(rate.Period)
+		fmt.Printf("Limiter::Get ttl: %v count: %v\n", ttl, count)
+
+		var expiration time.Time
 		if ttl > 0 {
 			expiration = now.Add(ttl)
+		} else {
+			// Why do we have a ttl of zero?
+			expiration = now.Add(rate.Period)
 		}
 
 		lctx = common.GetContextFromState(now, rate, expiration, count)
@@ -259,13 +266,16 @@ func updateValue(rtx *libredis.Tx, key string, expiration time.Duration) (int64,
 		return 0, 0, err
 	}
 
+	fmt.Printf("Limiter::updateValue ttl: %v, isExpirationRequired: %v\n", ttl, isExpirationRequired(ttl))
 	// If ttl is less than zero, we have to define key expiration.
 	// The PTTL command returns -2 if the key does not exist, and -1 if the key exists, but there is no expiry set.
 	// We shouldn't try to set an expiry on a key that doesn't exist.
 	if isExpirationRequired(ttl) {
 		expire := rtx.Expire(key, expiration)
-
 		ok, err := expire.Result()
+
+		fmt.Printf("Limiter::updateValue key: %v ok: %v, err: %v expiration: %v\n", key, ok, err, expiration)
+
 		if err != nil {
 			return count, ttl, err
 		}
